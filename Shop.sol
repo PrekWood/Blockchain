@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.7.0 <0.9.0;
-import 'https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/token/ERC20/ERC20.sol';
+import 'https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/token/ERC20/IERC20.sol';
 
-contract Shop is ERC20 {
+contract Shop is IERC20 {
     event E(uint msg);
 
     string PENDING_REQ = "Pending";
@@ -20,6 +20,15 @@ contract Shop is ERC20 {
     Transaction[] public declinedTransactions;
     Transaction[] public clientDeclinedTransactions;
 
+    // ERC-20 Token properties
+    string public name = "MyShopToken";
+    string public symbol = "MST";
+    uint256 public decimals = 18;
+    uint256 public totalSupply_ = 1000000000000000000000000; // 1,000,000 + 18 decimals
+    uint256 public ethereumExchangeRate = 60; // 1 wei = 60 MST
+    mapping(address => uint256) balances;
+    mapping(address => mapping (address => uint256)) allowed;
+
     // private
     address[] pendingTransaction;
     mapping(address=>address[]) answeredTransactions;
@@ -27,6 +36,7 @@ contract Shop is ERC20 {
     mapping(address => uint) adminIdx;
     mapping(address => Transaction) transactionMap;
     AdminAccountChange public adminAccountChange;
+
     // structs
     struct Transaction{
         uint productId;
@@ -51,8 +61,8 @@ contract Shop is ERC20 {
         address[] answeredAdmins;
         bool exists;
     }
-    constructor() ERC20('MyShop','MST'){
-        _mint(msg.sender,10000*10**18);         //INITIAL AMOUNT OF COIN TOKEN
+
+    constructor() {
         // initialize the owner and 3 admins
         owner = msg.sender;
         admins[0] = 0x5B38Da6a701c568545dCfcB03FcB875f56beddC4;
@@ -68,18 +78,13 @@ contract Shop is ERC20 {
         adminIdx[admins[2]] = 2;
 
         //initialize the products
-        products[0] = Product("Pencil",0,5000);
-        products[1] = Product("Book",12,10000);
-        products[2] = Product("Desk",12,10000);
+        products[0] = Product("Pencil",0,500);
+        products[1] = Product("Book",1,10000);
+        products[2] = Product("Desk",2,100000);
+
+        // On creation of the contract all the tokens go to the owner
+        balances[msg.sender] = totalSupply_;
     }
-    // -- -- --
-    // token
-    function mint(address to,uint amount) external{
-      // check if he is admin
-      require(adminExists[msg.sender], "You must be admin to change the amount of tokens");
-        _mint(to,amount);
-    }
-    // -- -- --
 
 
     // return all the Pending Transactios
@@ -91,7 +96,42 @@ contract Shop is ERC20 {
         return (t);
     }
     // -- -- --
-    // Transaction create  accept decline
+    // Transaction create accept decline
+    function createTransaction(uint idProduct) public payable { // returns (uint256)
+
+        balances[msg.sender] += msg.value*ethereumExchangeRate;
+
+        // check if the product exists
+        require(keccak256(bytes(products[idProduct].name)) != keccak256(bytes("")),"Product not found");
+
+        // check if the amount is bigger than the product amount
+        require(balances[msg.sender] >= products[idProduct].amount, "Your current ballance is smaller from the price of the product");
+
+        // check if the transaction exists
+        require(!transactionMap[msg.sender].exists, "You have allready a pending transaction, decline the old one first");
+
+
+        // save the transaction as pending
+        pendingBalance += products[idProduct].amount;
+        balances[msg.sender] -= products[idProduct].amount;
+
+        // save the Transaction
+        pendingTransaction.push(msg.sender);
+        address[] memory a;
+        transactionMap[msg.sender] = Transaction(
+            idProduct, 
+            msg.sender, 
+            products[idProduct].amount, 
+            PENDING_REQ, 
+            0, 
+            0, 
+            true, 
+            a
+        );
+        emit E(products[idProduct].amount);
+
+    }
+
     function acceptTransaction(address clientAddress) public returns(string memory){
         // check if he is admin
         require(adminExists[msg.sender], "You must be admin to accept this Transaction");
@@ -137,21 +177,23 @@ contract Shop is ERC20 {
         require(transactionMap[msg.sender].exists, "You dont have any Transactions");
         // check if the transaction pending
         require(keccak256(bytes(transactionMap[msg.sender].state))==keccak256(bytes(PENDING_REQ)), "Your Transaction isn't pending");
-        // make the Transaction declined
-            transactionMap[msg.sender].state = CLIENT_DECLINE_REQ;
 
-            // find the index of the address in the pendingTransaction array and delete it
-            for(uint i=0; i<pendingTransaction.length;i++){
-                if(pendingTransaction[i] == msg.sender){
-                    pendingTransaction = deletePendingTransaction(i);
-                    pendingBalance -= transactionMap[msg.sender].amount;
-                    clientDeclinedTransactions.push(transactionMap[msg.sender]);
-                    //return the amount cost of the product
-                    (payable (msg.sender)).transfer(transactionMap[msg.sender].amount);
-                    delete transactionMap[msg.sender];
-                    return "Your Transaction declined successfully";
-                }
+        // make the Transaction declined
+        transactionMap[msg.sender].state = CLIENT_DECLINE_REQ;
+
+        // find the index of the address in the pendingTransaction array and delete it
+        for(uint i=0; i<pendingTransaction.length;i++){
+            if(pendingTransaction[i] == msg.sender){
+                pendingTransaction = deletePendingTransaction(i);
+                pendingBalance -= transactionMap[msg.sender].amount;
+                clientDeclinedTransactions.push(transactionMap[msg.sender]);
+                //return the amount cost of the product
+                //(payable (msg.sender)).transfer(transactionMap[msg.sender].amount);
+                balances[msg.sender] += transactionMap[msg.sender].amount;
+                delete transactionMap[msg.sender];
+                return "Your Transaction declined successfully";
             }
+        }
 
         return "Something Happened";
     }
@@ -184,7 +226,8 @@ contract Shop is ERC20 {
                     pendingTransaction = deletePendingTransaction(i);
                     pendingBalance -= transactionMap[clientAddress].amount;
                     declinedTransactions.push(transactionMap[clientAddress]);
-                    clientAddress.transfer(transactionMap[clientAddress].amount);
+                    //clientAddress.transfer(transactionMap[clientAddress].amount);
+                    balances[clientAddress] += transactionMap[msg.sender].amount;
                     delete transactionMap[clientAddress];
                     break;
                 }
@@ -273,30 +316,10 @@ contract Shop is ERC20 {
     // Get value and data from the client
     // called when we have no data
     receive() payable external{
-        balance += msg.value;
+        balances[msg.sender] += msg.value*ethereumExchangeRate;
     }
-    // called when we have data
-    fallback() payable external{
-        uint id = abi.decode(msg.data, (uint));
-
-        // check if the product exists
-        require(keccak256(bytes(products[id].name)) !=keccak256(bytes("")),"Product not found");
-
-        // check if the amount is bigger than the product amount
-        require(msg.value>=products[id].amount,"Your amount is smaller from the price of the product");
-
-        // check if the transaction exists
-        require(!transactionMap[msg.sender].exists, "You have allready a pending transaction, decline the old one first");
-
-        // save the transaction as pending
-        pendingBalance += products[id].amount;
-        balance += msg.value-products[id].amount;
-        // save the Transaction
-        pendingTransaction.push(msg.sender);
-        address[] memory a;
-        transactionMap[msg.sender] = Transaction(id, msg.sender,products[id].amount,PENDING_REQ,0,0,true,a);
-        emit E(msg.value);
-    }
+    
+    
     // -- -- --
 
     //encode the id of the product for the abs
@@ -318,4 +341,52 @@ contract Shop is ERC20 {
         answeredTransactions[0x5B38Da6a701c568545dCfcB03FcB875f56beddC4] = a;
         return answeredTransactions[0x5B38Da6a701c568545dCfcB03FcB875f56beddC4].length;
     }
+
+
+    /*
+        ERC-20 Token methods
+    */
+    function totalSupply() public override view returns (uint256) {
+        return totalSupply_;
+    }
+
+    function balanceOf(address tokenOwner) public override view returns (uint256) {
+        return balances[tokenOwner];
+    }
+
+    function transfer(address receiver, uint256 numTokens) public override returns (bool) {
+        require(numTokens <= balances[msg.sender]);
+        balances[msg.sender] = balances[msg.sender]-numTokens;
+        balances[receiver] = balances[receiver]+numTokens;
+        emit Transfer(msg.sender, receiver, numTokens);
+        return true;
+    }
+
+    function approve(address spender, uint256 numTokens) public override returns (bool) {
+        allowed[msg.sender][spender] = numTokens;
+        emit Approval(msg.sender, spender, numTokens);
+        return true;
+    }
+
+    function allowance(address _owner, address spender) public override view returns (uint) {
+        return allowed[_owner][spender];
+    }
+
+    function transferFrom(address _owner, address buyer, uint256 numTokens) public override returns (bool) {
+        require(numTokens <= balances[_owner], "The owner does't have enough tokens.");
+        require(numTokens <= allowed[_owner][msg.sender], "You are not allowed to transfer that amount.");
+
+        balances[_owner] = balances[_owner]-numTokens;
+        allowed[_owner][msg.sender] = allowed[_owner][msg.sender]-numTokens;
+        balances[buyer] = balances[buyer]+numTokens;
+        emit Transfer(_owner, buyer, numTokens);
+        return true;
+    }
+
+    function changeEthereumExchangeRate(uint256 newExchangeRate) public{
+        // check if he is an admin
+        require(adminExists[msg.sender], "You must be admin to change the account");
+        ethereumExchangeRate = newExchangeRate;
+    }
+
 }
