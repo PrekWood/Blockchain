@@ -31,7 +31,7 @@ contract UnipiContract is IERC20 {
     string symbol = "UT";
     uint256 decimals = 18;
     uint256 totalTokenSupply = 1000000000000000000000000; 
-    uint256 ethereumExchangeRate = 90; // 1 wei = 90 MST
+    uint256 ethereumExchangeRate = 90; // 1 wei = 90 UnipiTokens
     mapping(address => uint256) userBalances;
     mapping(address => mapping (address => uint256)) accountsWithAccess;
 
