@@ -1,20 +1,29 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.7.0 <0.9.0;
-import "hardhat/console.sol";
 
-interface IERC20 {
-    function totalSupply() external view returns (uint256);
-    function balanceOf(address account) external view returns (uint256);
-    function allowance(address owner, address spender) external view returns (uint256);
+import 'https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/token/ERC20/IERC20.sol';
+/* 
+- μπορείς να βάλεις ή αυτο 
 
-    function transfer(address recipient, uint256 amount) external returns (bool);
-    function approve(address spender, uint256 amount) external returns (bool);
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    import 'https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/token/ERC20/IERC20.sol';
 
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-}
+- ή αυτό
 
+    interface IERC20 {
+
+        function totalSupply() external view returns (uint256);
+        function balanceOf(address account) external view returns (uint256);
+        function allowance(address owner, address spender) external view returns (uint256);
+
+        function transfer(address recipient, uint256 amount) external returns (bool);
+        function approve(address spender, uint256 amount) external returns (bool);
+        function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+
+
+        event Transfer(address indexed from, address indexed to, uint256 value);
+        event Approval(address indexed owner, address indexed spender, uint256 value);
+    }
+*/
 contract UnipiContract is IERC20 { 
 
     address payable owner;
